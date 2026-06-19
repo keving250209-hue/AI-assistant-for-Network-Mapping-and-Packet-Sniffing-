@@ -51,6 +51,12 @@ To download them use this command
 
 pip install SpeechRecognition pyttsx3 pyaudio
 
+To wake up the chatbot, say "Hey Chatbot" 
+
+####You have to say "Hey chatbot" after running the python file####
+
+And follow the on-screen instructions to intiate the scanning process
+
 
 
 
