@@ -31,12 +31,12 @@ https://nvd.nist.gov/vuln/data-feeds?utm_source=copilot.com
 
 Replace the name of the file with the json file name you have downloaded
 
-For the chatbot to recognize voice commands you will have to install pyttsx3 and speechrecognition
+For the chatbot to recognize voice commands you will have to install pyttsx3, speechrecognition and pyaudio
 
 It can be downlaoded with this command 
 
 
-pip install SpeechRecognition pyttsx3 pyaudio
+pip install pyttsx3 SpeechRecognition pyaudio requests
 
 
 For the voice command to work on Raspberry pi 5 
