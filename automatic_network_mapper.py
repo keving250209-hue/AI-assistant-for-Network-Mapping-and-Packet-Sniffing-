@@ -11,28 +11,19 @@ engine.setProperty("rate", 180)
 engine.setProperty("volume", 1.0)
 
 def speak(text):
-    """Speak text aloud using pyttsx3."""
     print("🔊 Bot:", text)
     engine.say(text)
     engine.runAndWait()
 
 def listen():
-    """Listen to microphone and return recognized text."""
     recognizer = sr.Recognizer()
     mic = sr.Microphone()
     with mic as source:
-        print("🎤 Listening...")
         recognizer.adjust_for_ambient_noise(source)
         audio = recognizer.listen(source)
     try:
-        text = recognizer.recognize_google(audio)
-        print("You:", text)
-        return text
-    except sr.UnknownValueError:
-        speak("Sorry, I didn’t catch that.")
-        return ""
-    except sr.RequestError:
-        speak("Speech recognition service unavailable.")
+        return recognizer.recognize_google(audio).lower()
+    except:
         return ""
 
 # Nmap scan types
@@ -82,40 +73,93 @@ def ask_ollama(prompt):
     except Exception as e:
         return f"Error querying Ollama: {e}"
 
-def main():
-    speak("Welcome to your voice-enabled ethical hacking assistant.")
-    speak("Say 'Nmap' for port scanning or 'Wireshark' for packet capture.")
+def check_cves_online(service_name, version):
+    try:
+        query = f"{service_name} {version}"
+        url = f"https://services.nvd.nist.gov/rest/json/cves/2.0?keywordSearch={query}"
+        response = requests.get(url, timeout=10)
+        if response.status_code == 200:
+            data = response.json()
+            vulns = []
+            for item in data.get("vulnerabilities", []):
+                cve_id = item["cve"]["id"]
+                description = item["cve"]["descriptions"][0]["value"]
+                vulns.append(f"{cve_id}: {description}")
+            return vulns if vulns else ["No CVEs found."]
+        else:
+            return [f"Error fetching CVEs: {response.status_code}"]
+    except Exception as e:
+        return [f"Error querying CVE API: {e}"]
 
-    choice = listen().lower()
+def check_cves_offline(service_name, version, local_file="[name of the latest json file]"):
+    if not os.path.exists(local_file):
+        return ["Local CVE file not found."]
+    try:
+        with open(local_file, "r") as f:
+            data = json.load(f)
+        vulns = []
+        for item in data.get("CVE_Items", []):
+            cve_id = item["cve"]["CVE_data_meta"]["ID"]
+            desc = item["cve"]["description"]["description_data"][0]["value"]
+            if service_name.lower() in desc.lower() and version.lower() in desc.lower():
+                vulns.append(f"{cve_id}: {desc}")
+        return vulns if vulns else ["No CVEs found in local file."]
+    except Exception as e:
+        return [f"Error reading local CVE file: {e}"]
 
-    if "nmap" in choice:
-        speak("Please say the target IP or hostname.")
-        target = listen()
-        speak("Say the scan type number, for example one for TCP connect, four for service detection.")
-        for key, (desc, _) in SCAN_TYPES.items():
-            print(f"{key}. {desc}")
-        scan_choice = listen()
-        if scan_choice not in SCAN_TYPES:
-            speak("Invalid choice.")
-            return
-        scan_name, options = SCAN_TYPES[scan_choice]
-        speak(f"Running {scan_name} on {target}")
-        scan_results = run_nmap(target, options)
-        analysis = ask_ollama(f"Analyze these Nmap results:\n{scan_results}")
-        speak(analysis)
+def main_loop():
+    speak("Voice assistant ready. Say 'Hey Chatbot' to wake me up.")
+    while True:
+        command = listen()
+        if "hey Chatbot" in command:
+            speak("I’m listening. Say Nmap or Wireshark.")
+            choice = listen()
+            if "nmap" in choice:
+                speak("Say the target IP or hostname.")
+                target = listen()
+                speak("Say the scan type number, for example one for TCP connect, four for service detection.")
+                for key, (desc, _) in SCAN_TYPES.items():
+                    print(f"{key}. {desc}")
+                scan_choice = listen()
+                if scan_choice in SCAN_TYPES:
+                    scan_name, options = SCAN_TYPES[scan_choice]
+                    speak(f"Running {scan_name} on {target}")
+                    results = run_nmap(target, options)
+                    print(results)
 
-    elif "wireshark" in choice:
-        speak("Please say the network interface, default is eth0.")
-        interface = listen() or "eth0"
-        speak("Please say the capture duration in seconds.")
-        duration = listen() or "10"
-        speak(f"Capturing packets on {interface} for {duration} seconds.")
-        capture = run_wireshark(interface, duration)
-        analysis = ask_ollama(f"Analyze this packet capture:\n{capture}")
-        speak(analysis)
+                    # CVE lookup
+                    all_vulns = []
+                    for line in results.splitlines():
+                        if "open" in line and "/" in line:
+                            parts = line.split()
+                            if len(parts) >= 4:
+                                port = parts[0]
+                                service = parts[2]
+                                version = " ".join(parts[3:])
+                                speak(f"Checking CVEs for {service} {version} on port {port}")
+                                vulns = check_cves_online(service, version)
+                                if "Error" in vulns[0] or "No CVEs" in vulns[0]:
+                                    vulns = check_cves_offline(service, version)
+                                for v in vulns[:3]:
+                                    speak(v)
+                                all_vulns.extend(vulns)
 
-    else:
-        speak("Invalid choice. Please restart and try again.")
+                    # AI summary
+                    analysis = ask_ollama(f"Summarize risks from Nmap + CVE results:\n{results}\n{all_vulns}")
+                    speak(analysis)
+                else:
+                    speak("Invalid scan choice.")
+            elif "wireshark" in choice:
+                speak("Please say the network interface, default is eth0.")
+                interface = listen() or "eth0"
+                speak("Please say the capture duration in seconds.")
+                duration = listen() or "10"
+                speak(f"Capturing packets on {interface} for {duration} seconds.")
+                capture = run_wireshark(interface, duration)
+                analysis = ask_ollama(f"Analyze this packet capture:\n{capture}")
+                speak(analysis)
+            else:
+                speak("Invalid choice.")
 
 if __name__ == "__main__":
-    main()
+    main_loop()
